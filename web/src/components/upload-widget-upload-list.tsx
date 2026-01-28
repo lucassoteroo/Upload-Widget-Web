@@ -3,7 +3,7 @@ import { UploadWidgetUploadItem } from "./upload-widget-upload-item";
 
 export function UploadWidgetUploadList() {
     // se houver uma mudança de estado que não seja na lista de uploads, ele não vai se renderizar
-    const { uploads } = useUploads()
+    const uploads = useUploads(store => store.uploads)
 
     const isUploadListEmpty = uploads.size === 0
 
