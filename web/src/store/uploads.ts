@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { enableMapSet } from 'immer';
 import { uploadFileToStorage } from '../http/upload-file-to-storage';
 import { CanceledError } from 'axios';
+import { useShallow } from 'zustand/shallow';
 
 export type Upload = {
     name: string,
@@ -22,9 +23,22 @@ type UploadState = {
 
 enableMapSet()
 
+// rookie
 // gerenciamento de estado de criação de uploads
 export const useUploads = create<UploadState, [['zustand/immer', never]]>(
     immer((set, get) => {
+        function updateUploads(uploadId: string, data: Partial<Upload>) {
+            const upload = get().uploads.get(uploadId)
+
+            if (!upload) {
+                return
+            }
+
+            set(state => {
+                state.uploads.set(uploadId, {...upload, ...data})
+            })
+        }
+
         async function processUpload(uploadId: string) {
             const upload = get().uploads.get(uploadId)
 
@@ -37,45 +51,33 @@ export const useUploads = create<UploadState, [['zustand/immer', never]]>(
                     { 
                         file: upload.file,
                         onProgress(sizeInBytes) {
-                            set(state => {
-                                // atribui um valor ao estado
-                                state.uploads.set(uploadId, {
-                                    ...upload,
-                                    uploadSizesInBytes: sizeInBytes
-                                })
-                            })   
+                            // atribui um valor ao estado
+                            updateUploads(uploadId, {
+                                uploadSizesInBytes: sizeInBytes
+                            })
                         }
                     },
                     { signal: upload.abortController.signal }
                 )
     
-                set(state => {
-                    // atribui um valor ao estado
-                    state.uploads.set(uploadId, {
-                        ...upload,
-                        status: 'success'
-                    })
-                })            
+                // atribui um valor ao estado
+                updateUploads(uploadId, {
+                    status: 'success'
+                })
             } catch (err) {
                 if (err instanceof CanceledError) {
                     // atribui um valor ao estado
-                    set(state => {
-                        state.uploads.set(uploadId, {
-                            ...upload,
-                            status: 'canceled'
-                        })
-                    })    
+                    updateUploads(uploadId, {
+                        status: 'canceled'
+                    })
 
                     return
                 }
 
                 // atribui um valor ao estado
-                set(state => {
-                    state.uploads.set(uploadId, {
-                        ...upload,
-                        status: 'error'
-                    })
-                })      
+                updateUploads(uploadId, {
+                    status: 'error'
+                })    
             }
         }
         
@@ -119,3 +121,36 @@ export const useUploads = create<UploadState, [['zustand/immer', never]]>(
         }
     })
 )
+
+// gerenciando o estado do uploads pendentes
+export const usePendingUploads = () => {
+    return useUploads(useShallow(store => {
+        const isThereAnyPendingUploads = Array.from(store.uploads.values()).some(upload => upload.status === 'progress')
+
+        if (!isThereAnyPendingUploads) {
+            return { isThereAnyPendingUploads, globalPercentage: 100 }
+        }
+
+        const {
+            total, uploaded
+        } = Array.from(store.uploads.values()).reduce(
+            (acc, upload) => {
+                acc.total += upload.originalSizeInBytes
+                acc.uploaded += upload.uploadSizesInBytes
+
+                return acc
+            },
+            { total: 0, uploaded: 0}
+        )
+
+        const globalPercentage = Math.min(
+            Math.round((uploaded * 100) / total),
+            100
+        )
+
+        return {
+            isThereAnyPendingUploads,
+            globalPercentage
+        }
+    }))
+}
