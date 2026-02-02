@@ -5,6 +5,7 @@ import { enableMapSet } from 'immer';
 import { uploadFileToStorage } from '../http/upload-file-to-storage';
 import { CanceledError } from 'axios';
 import { useShallow } from 'zustand/shallow';
+import { compressImage } from '../utils/compress-image';
 
 export type Upload = {
     name: string,
@@ -47,9 +48,16 @@ export const useUploads = create<UploadState, [['zustand/immer', never]]>(
             }
 
             try {
+                const compressedFile = await compressImage({
+                    file: upload.file,
+                    maxWidth: 200,
+                    maxHeight: 200,
+                    quality: 0.5
+                })
+
                 await uploadFileToStorage(
                     { 
-                        file: upload.file,
+                        file: compressedFile,
                         onProgress(sizeInBytes) {
                             // atribui um valor ao estado
                             updateUploads(uploadId, {
